@@ -1,6 +1,7 @@
 const fs = require("fs");
 const readline = require("readline");
 const { google } = require("googleapis");
+const parser = require("parse-address");
 
 // If modifying these scopes, delete token.json.
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -83,33 +84,52 @@ function readAndUpdate(auth) {
   sheets.spreadsheets.values.get(
     {
       spreadsheetId: "14TCPhWNG-6GETw69PGxYOUl9YaEXAHwGp_HkHilPZrc",
-      range: "A1:E",
+      range: "A2:A5",
     },
     (err, res) => {
       if (err) return console.log("The API returned an error: " + err);
       const rows = res.data.values;
       if (rows.length) {
-        // 18615 Rogers Pl, San Antonio, TX 78258
-        // 477 S Clinton St #2ndfl, East Orange, NJ 07018
-        // 3113 40th Ave, Meridian, MS 39307
-        // 2479 Peachtree Rd NE, Atlanta, GA 30305"
-        // Print columns A and E, which correspond to indices 0 and 4.
-        let newVals = rows.map((row) => {
-          console.log(`${row[0]}`);
-          return `${row[0]}`;
+        let newRows = rows.map((row) => {
+          let parsed = parser.parseLocation(row[0]);
+          return getNormalizedString(parsed);
         });
-        updateValues(newVals, sheets);
+        updateValues(newRows, sheets);
       } else {
         console.log("No data found.");
       }
     }
   );
 
+  function getNormalizedString(parsedAdress) {
+    let addrString = parsedAdress.number;
+    addrString += getAdress(parsedAdress);
+    addrString += `, ${capitalize(
+      parsedAdress.city
+    )}, ${parsedAdress.state.toUpperCase()} ${parsedAdress.zip}`;
+    return addrString;
+  }
+
+  function capitalize(string) {
+    return string
+      .split(" ")
+      .map((s) => s.charAt(0).toUpperCase() + s.substring(1))
+      .join(" ");
+  }
+
+  function getAdress(parsedAdress) {
+    let prefix = capitalize(parsedAdress.prefix ? parsedAdress.prefix : "");
+    let street = capitalize(parsedAdress.street ? parsedAdress.street : "");
+    let type = parsedAdress.type ? parsedAdress.type : "";
+    let suffix = parsedAdress.suffix ? parsedAdress.suffix : "";
+
+    return ` ${prefix ? `${prefix} ` : ""}${street} ${type}${
+      suffix ? ` ${suffix}` : ""
+    }`;
+  }
+
   function updateValues(newValueArr, sheets) {
-    let values = [
-      [...newValueArr],
-      // Additional rows ...
-    ];
+    let values = [[...newValueArr]];
     const resource = {
       values,
       majorDimension: "COLUMNS",
@@ -117,7 +137,7 @@ function readAndUpdate(auth) {
     sheets.spreadsheets.values.update(
       {
         spreadsheetId: "14TCPhWNG-6GETw69PGxYOUl9YaEXAHwGp_HkHilPZrc",
-        range: "B1",
+        range: "B2",
         valueInputOption: "USER_ENTERED",
         resource,
       },
@@ -126,7 +146,7 @@ function readAndUpdate(auth) {
           // Handle error
           console.log(err);
         } else {
-          console.log("%d cells updated.", result.updatedCells);
+          console.log("Cells updated.");
         }
       }
     );
